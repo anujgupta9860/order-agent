@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from .agent import OrderAgent, timed
+from .mcp_server import SERVER_INFO, handle_rpc
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -45,7 +46,16 @@ AGENT_CARD = {
          "description": "Start a return, issue an RMA label"},
         {"name": "reorder",
          "description": "Re-buy the items of a previous order"},
+        {"name": "list_orders",
+         "description": "List all orders with statuses and totals"},
+        {"name": "estimate_delivery",
+         "description": "Estimate the delivery date of an order"},
     ],
+    "protocols": {
+        "a2a": {"message": "/message"},
+        "mcp": {"endpoint": "/mcp", "transport": "streamable-http",
+                "server": SERVER_INFO["name"]},
+    },
     "input": {"text": "customer message", "intent": "router intent",
               "context": {"analyzer": "Tier-2 analyzer decisions"}},
 }
@@ -77,3 +87,18 @@ def message(req: MessageRequest):
     log.info("task=%s action=%s status=%s", out["task_id"],
              result.action, result.status)
     return out
+
+
+@app.post("/mcp")
+def mcp(payload: dict):
+    """Mock MCP server (streamable HTTP, JSON-RPC 2.0).
+
+    Methods: initialize, tools/list, tools/call.
+    """
+    if not isinstance(payload, dict) or "method" not in payload:
+        return {"jsonrpc": "2.0", "id": payload.get("id"),
+                "error": {"code": -32600, "message": "invalid request"}}
+    resp = handle_rpc(payload)
+    return resp if resp is not None else {"jsonrpc": "2.0",
+                                         "id": payload.get("id"),
+                                         "result": {}}

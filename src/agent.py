@@ -55,6 +55,8 @@ class OrderAgent:
             "modify": self._modify,
             "return": self._return,
             "reorder": self._reorder,
+            "list": self._list,
+            "estimate": self._estimate,
         }.get(action, self._order_info)
         return handler(text, order_id, analyzer)
 
@@ -153,11 +155,47 @@ class OrderAgent:
                      "orders. Give me an order ID (like #48291) and tell me "
                      "what you'd like to do."))
 
+    def _list(self, text: str, order_id: str | None,
+              analyzer: dict) -> AgentResult:
+        orders = orders_db.list_all()
+        lines = [f"#{o['order_id']}: {o['status']} "
+                 f"(${o['total']:.2f})" for o in orders]
+        return AgentResult(
+            status="completed", action="list",
+            message=f"You have {len(orders)} orders:\n" + "\n".join(lines),
+            data={"orders": orders})
+
+    def _estimate(self, text: str, order_id: str | None,
+                  analyzer: dict) -> AgentResult:
+        if not order_id:
+            return self._need_id("estimate")
+        order = orders_db.get(order_id)
+        if not order:
+            return AgentResult(status="failed", action="estimate",
+                               message=f"No order found for #{order_id}.")
+        if order["status"] == "delivered":
+            msg = f"Order #{order_id} was already delivered."
+        elif order["tracking_number"]:
+            msg = (f"Order #{order_id} is {order['status']} via "
+                   f"{order['carrier']} — estimated delivery {order['eta']}.")
+        else:
+            msg = (f"Order #{order_id} is still {order['status']} — "
+                   f"estimated delivery {order['eta']} once it ships.")
+        return AgentResult(status="completed", action="estimate",
+                           message=msg, data={"order": order})
+
     # -------------------------------------------------------------- internals
     @staticmethod
     def _infer_action(text: str) -> str:
         t = (text or "").lower()
-        if any(k in t for k in ("track", "where is", "status", "arriv", "shipped")):
+        if any(k in t for k in ("list", "my orders", "order history",
+                                "all orders")):
+            return "list"
+        if any(k in t for k in ("when will", "eta", "estimate",
+                                "delivery date")):
+            return "estimate"
+        if any(k in t for k in ("track", "where is", "status", "arriv",
+                                "shipped")):
             return "track"
         if "cancel" in t:
             return "cancel"

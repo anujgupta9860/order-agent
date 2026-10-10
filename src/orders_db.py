@@ -49,6 +49,10 @@ def get(order_id: str) -> dict | None:
     return copy.deepcopy(_orders.get(order_id))
 
 
+def list_all() -> list[dict]:
+    return [copy.deepcopy(o) for o in _orders.values()]
+
+
 def cancel(order_id: str) -> dict | None:
     order = _orders.get(order_id)
     if order is None or not order["cancellable"]:
