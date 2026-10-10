@@ -136,3 +136,25 @@ def test_mcp_http_endpoint():
         card = t.get("/.well-known/agent-card.json").json()
         assert card["protocols"]["mcp"]["endpoint"] == "/mcp"
         assert len(card["skills"]) == 7
+
+
+def test_low_confidence_analyzer_falls_back_to_text():
+    # analyzer guessed "modify" @ 0.75 for a list request (outside its
+    # trained labels) -> agent trusts the text instead
+    r = OrderAgent().handle(
+        "show me all my orders", "order_status",
+        {"order_action": "modify", "choice_confidence": 0.757})
+    assert r.action == "list" and r.status == "completed"
+
+
+def test_high_confidence_analyzer_wins():
+    r = OrderAgent().handle(
+        "show me all my orders", "order_status",
+        {"order_action": "track", "choice_confidence": 0.95})
+    assert r.action == "track"
+
+
+def test_explicit_action_without_confidence_kept():
+    # MCP path: explicit action, no confidence -> used as-is
+    r = OrderAgent().handle("list", "mcp", {"order_action": "list"})
+    assert r.action == "list"

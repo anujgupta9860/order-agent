@@ -44,7 +44,15 @@ class OrderAgent:
     def handle(self, text: str, intent: str,
                analyzer: dict | None) -> AgentResult:
         analyzer = analyzer or {}
-        action = analyzer.get("order_action") or self._infer_action(text)
+        action = analyzer.get("order_action")
+        conf = analyzer.get("choice_confidence")
+        if action and conf is not None and conf < 0.8:
+            # Analyzer is unsure — possibly a request outside its trained
+            # labels (e.g. list/estimate). Trust the message text instead.
+            log.info("order agent: analyzer unsure (%s @ %.2f); "
+                     "falling back to text inference", action, conf)
+            action = self._infer_action(text)
+        action = action or self._infer_action(text)
         order_id = (extract_order_id(text)
                     or analyzer.get("order_id"))
         log.info("order agent: action=%s order_id=%s intent=%s",
