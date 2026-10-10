@@ -17,7 +17,7 @@ from pathlib import Path
 # action names the agent can actually execute (see agent.OrderAgent)
 KNOWN_ACTIONS = {
     "track", "cancel", "modify", "return", "reorder",
-    "list", "estimate", "place", "order_info",
+    "list", "estimate", "place", "order_info", "greet",
 }
 
 

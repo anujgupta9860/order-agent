@@ -71,6 +71,7 @@ class OrderAgent:
             "list": self._list,
             "estimate": self._estimate,
             "place": self._place,
+            "greet": self._greet,
         }.get(action, self._order_info)
         return handler(text, order_id, analyzer)
 
@@ -179,6 +180,14 @@ class OrderAgent:
             message=f"Reordered the items from #{order_id} as new order "
                     f"#{new['order_id']} (${new['total']:.2f}).",
             data={"order": new})
+
+    def _greet(self, text: str, order_id: str | None,
+               analyzer: dict) -> AgentResult:
+        return AgentResult(
+            status="completed", action="greet",
+            message=("Hi there! I'm your order assistant. I can track, "
+                     "cancel, modify, return, or reorder your orders — or "
+                     "place a new one. What would you like to do?"))
 
     def _order_info(self, text: str, order_id: str | None,
                     analyzer: dict) -> AgentResult:

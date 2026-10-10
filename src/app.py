@@ -81,6 +81,14 @@ class MessageRequest(BaseModel):
 def message(req: MessageRequest):
     started = time.monotonic()
     analyzer = (req.context or {}).get("analyzer") or {}
+    # Task-framework sessions: the router passes locked slots
+    # (e.g. order_id filled on a previous turn) in context.session.
+    session = (req.context or {}).get("session") or {}
+    if session.get("slots"):
+        analyzer = {"order_id": session["slots"].get("order_id"),
+                    **analyzer}
+        if session.get("action") and not analyzer.get("order_action"):
+            analyzer["order_action"] = session["action"]
     result = agent.handle(req.text.strip(), req.intent.strip(), analyzer)
     out = timed(result, started, req.text.strip())
     log.info("task=%s action=%s status=%s", out["task_id"],

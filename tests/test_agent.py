@@ -94,7 +94,7 @@ def test_mcp_initialize_and_list():
                         "params": {}})
     names = [t["name"] for t in tools["result"]["tools"]]
     assert "track_order" in names and "list_orders" in names
-    assert "estimate_delivery" in names and len(names) == 8
+    assert "estimate_delivery" in names and len(names) == 9
 
 
 def test_mcp_call_track():
@@ -127,7 +127,7 @@ def test_mcp_http_endpoint():
         r = t.post("/mcp", json={"jsonrpc": "2.0", "id": 1,
                                  "method": "tools/list", "params": {}})
         assert r.status_code == 200
-        assert len(r.json()["result"]["tools"]) == 8
+        assert len(r.json()["result"]["tools"]) == 9
         r2 = t.post("/mcp", json={
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": {"name": "estimate_delivery",
@@ -135,7 +135,7 @@ def test_mcp_http_endpoint():
         assert "2026-10-18" in r2.json()["result"]["content"][0]["text"]
         card = t.get("/.well-known/agent-card.json").json()
         assert card["protocols"]["mcp"]["endpoint"] == "/mcp"
-        assert len(card["skills"]) == 8
+        assert len(card["skills"]) == 9
 
 
 def test_low_confidence_analyzer_falls_back_to_text():
@@ -227,3 +227,9 @@ def test_need_id_offers_list_hint():
     r = OrderAgent().handle("track my order", "order_status", {})
     assert r.status == "needs_input"
     assert "list all your orders" in r.message
+
+
+def test_greet():
+    r = OrderAgent().handle("hi", "fallback", {"order_action": "greet"})
+    assert r.status == "completed" and r.action == "greet"
+    assert "Hi there" in r.message

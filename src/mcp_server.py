@@ -19,6 +19,11 @@ SERVER_INFO = {"name": "order-management-mcp", "version": "0.1.0"}
 
 TOOLS = [
     {
+        "name": "greet",
+        "description": "Greet the user and explain capabilities.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "track_order",
         "description": "Look up shipment status, carrier, tracking number "
                        "and ETA for an order.",
@@ -108,6 +113,7 @@ TOOLS = [
 
 # tool name -> (agent action, text template)
 _TOOL_ACTIONS = {
+    "greet": "greet",
     "track_order": "track",
     "cancel_order": "cancel",
     "modify_order": "modify",
