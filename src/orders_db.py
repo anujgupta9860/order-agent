@@ -83,3 +83,29 @@ def reorder(order_id: str) -> dict | None:
         "cancellable": True,
     }
     return copy.deepcopy(_orders[new_id])
+
+
+# ------------------------------------------------------------ catalog
+# Mock product catalog for placing new orders.
+CATALOG = {
+    "wireless mouse": 24.99,
+    "usb-c hub": 49.99,
+    "mechanical keyboard": 129.00,
+    "monitor stand": 79.99,
+    "desk lamp": 65.51,
+    "webcam": 89.00,
+}
+
+
+def place(items: list[str], address: str | None) -> dict:
+    """Create a brand-new order from catalog items."""
+    total = round(sum(CATALOG[i] for i in items), 2)
+    new_id = str(int(max(_orders)) + 1)
+    order = {
+        "order_id": new_id, "status": "processing", "carrier": None,
+        "tracking_number": None, "eta": "2026-10-20",
+        "items": list(items), "total": total,
+        "cancellable": True, "ship_to": address,
+    }
+    _orders[new_id] = order
+    return copy.deepcopy(order)

@@ -1,0 +1,92 @@
+# Agent skills — HOT-RELOADED.
+#
+# Edit this file (or upload a new one) and the agent picks up the
+# changes on the next request. No rebuild, no redeploy. The router's
+# skill registry re-discovers them from the agent card
+# (5-min TTL, or POST /skills/refresh on the router).
+#
+# Each skill needs:
+#   name:        unique skill id (also the MCP tool name)
+#   description: what it does (shown in the card + MCP)
+#   action:      agent action to run — one of:
+#                track | cancel | modify | return | reorder |
+#                list | estimate | place | order_info
+#   mcp_input:   JSON Schema for the MCP tool's arguments
+#
+# A skill whose action has no handler is rejected (see /skills/status).
+
+skills:
+  - name: track_order
+    description: Look up shipment status, carrier, tracking number and ETA for an order.
+    action: track
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string, description: "Order ID, e.g. 48291"}
+      required: [order_id]
+
+  - name: cancel_order
+    description: Cancel an order that is still processing.
+    action: cancel
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string}
+      required: [order_id]
+
+  - name: modify_order
+    description: Change items, quantity or address on a processing order.
+    action: modify
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string}
+        change: {type: string, description: "What to change"}
+      required: [order_id]
+
+  - name: return_order
+    description: Start a return for a shipped/delivered order; returns an RMA label URL.
+    action: return
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string}
+      required: [order_id]
+
+  - name: reorder
+    description: Re-buy all items of a previous order as a new order.
+    action: reorder
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string}
+      required: [order_id]
+
+  - name: place_order
+    description: >-
+      Place a brand-new order. Items must be from the catalog:
+      wireless mouse, usb-c hub, mechanical keyboard, monitor stand,
+      desk lamp, webcam.
+    action: place
+    mcp_input:
+      type: object
+      properties:
+        items: {type: array, items: {type: string}, description: "Catalog item names"}
+        address: {type: string, description: "Shipping address"}
+      required: [items, address]
+
+  - name: list_orders
+    description: List all orders with their statuses and totals.
+    action: list
+    mcp_input:
+      type: object
+      properties: {}
+
+  - name: estimate_delivery
+    description: Estimate the delivery date of an order.
+    action: estimate
+    mcp_input:
+      type: object
+      properties:
+        order_id: {type: string}
+      required: [order_id]

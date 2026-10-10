@@ -94,7 +94,7 @@ def test_mcp_initialize_and_list():
                         "params": {}})
     names = [t["name"] for t in tools["result"]["tools"]]
     assert "track_order" in names and "list_orders" in names
-    assert "estimate_delivery" in names and len(names) == 7
+    assert "estimate_delivery" in names and len(names) == 8
 
 
 def test_mcp_call_track():
@@ -127,7 +127,7 @@ def test_mcp_http_endpoint():
         r = t.post("/mcp", json={"jsonrpc": "2.0", "id": 1,
                                  "method": "tools/list", "params": {}})
         assert r.status_code == 200
-        assert len(r.json()["result"]["tools"]) == 7
+        assert len(r.json()["result"]["tools"]) == 8
         r2 = t.post("/mcp", json={
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": {"name": "estimate_delivery",
@@ -135,7 +135,7 @@ def test_mcp_http_endpoint():
         assert "2026-10-18" in r2.json()["result"]["content"][0]["text"]
         card = t.get("/.well-known/agent-card.json").json()
         assert card["protocols"]["mcp"]["endpoint"] == "/mcp"
-        assert len(card["skills"]) == 7
+        assert len(card["skills"]) == 8
 
 
 def test_low_confidence_analyzer_falls_back_to_text():
@@ -158,3 +158,59 @@ def test_explicit_action_without_confidence_kept():
     # MCP path: explicit action, no confidence -> used as-is
     r = OrderAgent().handle("list", "mcp", {"order_action": "list"})
     assert r.action == "list"
+
+
+def test_place_order_full():
+    r = OrderAgent().handle(
+        "buy a wireless mouse and a webcam, ship to 123 Main St, Tampa FL",
+        "order_status", {})
+    assert r.status == "completed" and r.action == "place"
+    assert r.data["order"]["total"] == 24.99 + 89.00
+    assert "123 Main St" in r.message
+
+
+def test_place_order_needs_items():
+    r = OrderAgent().handle("i want to buy something", "order_status", {})
+    assert r.status == "needs_input" and r.action == "place"
+
+
+def test_place_order_needs_address():
+    r = OrderAgent().handle("buy a webcam", "order_status", {})
+    assert r.status == "needs_input" and "ship" in r.message.lower()
+
+
+def test_skill_loader_hot_reload(tmp_path):
+    import yaml
+    from src.skills_loader import SkillLoader, SkillError
+    p = tmp_path / "skills.yaml"
+    p.write_text(yaml.safe_dump({"skills": [
+        {"name": "track_order", "description": "t", "action": "track",
+         "mcp_input": {"type": "object", "properties": {}}}]}))
+    loader = SkillLoader(p)
+    assert len(loader.skills()) == 1
+    # add a skill on disk
+    p.write_text(yaml.safe_dump({"skills": [
+        {"name": "track_order", "description": "t", "action": "track",
+         "mcp_input": {"type": "object", "properties": {}}},
+        {"name": "list_orders", "description": "l", "action": "list",
+         "mcp_input": {"type": "object", "properties": {}}}]}))
+    assert loader.maybe_reload() is True
+    assert len(loader.skills()) == 2
+    assert loader.action_for("list_orders") == "list"
+    # broken edit keeps old set
+    p.write_text("skills:\n  - name: bad\n    description: x\n    action: nope\n")
+    assert loader.maybe_reload() is False
+    assert "unknown action" in loader.last_error
+    assert len(loader.skills()) == 2
+    assert loader.status()["live"] is False
+
+
+def test_skill_loader_rejects_empty():
+    import yaml
+    from src.skills_loader import SkillLoader, SkillError
+    import tempfile, pytest
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "s.yaml"
+        p.write_text(yaml.safe_dump({"skills": []}))
+        with pytest.raises(SkillError):
+            SkillLoader(p)

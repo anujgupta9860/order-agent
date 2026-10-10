@@ -14,12 +14,18 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from .agent import OrderAgent, timed
-from .mcp_server import SERVER_INFO, handle_rpc
+from .mcp_server import SERVER_INFO, handle_rpc, set_skill_loader
+from .skills_loader import SkillLoader
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+skill_loader = SkillLoader(REPO_ROOT / "skills" / "skills.yaml")
+set_skill_loader(skill_loader)
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -28,48 +34,41 @@ logging.basicConfig(level=logging.INFO,
 app = FastAPI(title="Order Management Agent (A2A worker)", version="0.1.0")
 agent = OrderAgent()
 
-AGENT_CARD = {
-    "name": "order-management-agent",
-    "description": "Handles order actions: track, cancel, modify, return, "
-                   "reorder. Consumes intent-analyzer Tier-2 decisions.",
-    "version": "0.1.0",
-    "protocol": "a2a-http",
-    "endpoints": {"message": "/message"},
-    "skills": [
-        {"name": "track_order",
-         "description": "Look up shipment status by order ID"},
-        {"name": "cancel_order",
-         "description": "Cancel a processing order"},
-        {"name": "modify_order",
-         "description": "Change items/quantity/address before shipment"},
-        {"name": "return_order",
-         "description": "Start a return, issue an RMA label"},
-        {"name": "reorder",
-         "description": "Re-buy the items of a previous order"},
-        {"name": "list_orders",
-         "description": "List all orders with statuses and totals"},
-        {"name": "estimate_delivery",
-         "description": "Estimate the delivery date of an order"},
-    ],
-    "protocols": {
-        "a2a": {"message": "/message"},
-        "mcp": {"endpoint": "/mcp", "transport": "streamable-http",
-                "server": SERVER_INFO["name"]},
-    },
-    "input": {"text": "customer message", "intent": "router intent",
-              "context": {"analyzer": "Tier-2 analyzer decisions"}},
-}
+def build_agent_card() -> dict:
+    """Agent card with hot-reloaded skills (rebuilt on every fetch)."""
+    return {
+        "name": "order-management-agent",
+        "description": "Handles order actions. Consumes intent-analyzer "
+                       "Tier-2 decisions.",
+        "version": "0.1.0",
+        "protocol": "a2a-http",
+        "endpoints": {"message": "/message"},
+        "skills": skill_loader.card_skills(),
+        "protocols": {
+            "a2a": {"message": "/message"},
+            "mcp": {"endpoint": "/mcp", "transport": "streamable-http",
+                    "server": SERVER_INFO["name"]},
+        },
+        "input": {"text": "customer message", "intent": "router intent",
+                  "context": {"analyzer": "Tier-2 analyzer decisions"}},
+    }
 
 
 @app.get("/.well-known/agent-card.json")
 def agent_card():
-    return AGENT_CARD
+    return build_agent_card()
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "agent": "order-management-agent",
-            "skills": [s["name"] for s in AGENT_CARD["skills"]]}
+            "skills": [s["name"] for s in skill_loader.card_skills()]}
+
+
+@app.get("/skills/status")
+def skills_status():
+    """Hot-reload status for skills.yaml."""
+    return skill_loader.status()
 
 
 class MessageRequest(BaseModel):

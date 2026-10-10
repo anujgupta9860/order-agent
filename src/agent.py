@@ -65,6 +65,7 @@ class OrderAgent:
             "reorder": self._reorder,
             "list": self._list,
             "estimate": self._estimate,
+            "place": self._place,
         }.get(action, self._order_info)
         return handler(text, order_id, analyzer)
 
@@ -159,9 +160,10 @@ class OrderAgent:
                     analyzer: dict) -> AgentResult:
         return AgentResult(
             status="completed", action="order_info",
-            message=("I can track, cancel, modify, return, or reorder your "
-                     "orders. Give me an order ID (like #48291) and tell me "
-                     "what you'd like to do."))
+            message=("I can place new orders, track, cancel, modify, return, "
+                     "or reorder. To buy something, tell me what you want "
+                     "and where to ship it — e.g. 'buy a wireless mouse, "
+                     "ship to 123 Main St, Tampa FL'."))
 
     def _list(self, text: str, order_id: str | None,
               analyzer: dict) -> AgentResult:
@@ -192,10 +194,49 @@ class OrderAgent:
         return AgentResult(status="completed", action="estimate",
                            message=msg, data={"order": order})
 
+    def _place(self, text: str, order_id: str | None,
+               analyzer: dict) -> AgentResult:
+        items = self._extract_items(text)
+        address = self._extract_address(text)
+        if not items:
+            return AgentResult(
+                status="needs_input", action="place",
+                message="What would you like to order? I have: " +
+                        ", ".join(sorted(orders_db.CATALOG)) + ".")
+        if not address:
+            return AgentResult(
+                status="needs_input", action="place",
+                message=f"Got it — {', '.join(items)}. "
+                        f"Where should I ship it? (e.g. 'ship to 123 Main St, "
+                        f"Tampa FL 33601')")
+        order = orders_db.place(items, address)
+        return AgentResult(
+            status="completed", action="place",
+            message=(f"Order #{order['order_id']} placed! "
+                     f"{', '.join(items)} (${order['total']:.2f}) "
+                     f"shipping to {address}. Expected {order['eta']}."),
+            data={"order": order})
+
     # -------------------------------------------------------------- internals
+    @staticmethod
+    def _extract_items(text: str) -> list[str]:
+        t = (text or "").lower()
+        return [name for name in orders_db.CATALOG if name in t]
+
+    @staticmethod
+    def _extract_address(text: str) -> str | None:
+        m = re.search(r"(?:ship to|deliver to|address:?)\s+(.+)",
+                      text or "", re.IGNORECASE)
+        return m.group(1).strip().rstrip(".") if m else None
+
     @staticmethod
     def _infer_action(text: str) -> str:
         t = (text or "").lower()
+        if "reorder" in t or "buy again" in t or "order again" in t:
+            return "reorder"
+        if any(k in t for k in ("place an order", "place order", "buy ",
+                                "purchase", "order a ", "i want a ")):
+            return "place"
         if any(k in t for k in ("list", "my orders", "order history",
                                 "all orders")):
             return "list"
@@ -211,8 +252,6 @@ class OrderAgent:
             return "modify"
         if "return" in t:
             return "return"
-        if "reorder" in t or "buy again" in t or "order again" in t:
-            return "reorder"
         return "order_info"
 
 

@@ -89,6 +89,21 @@ TOOLS = [
             "required": ["order_id"],
         },
     },
+    {
+        "name": "place_order",
+        "description": "Place a brand-new order. Items must be from the "
+                       "catalog: wireless mouse, usb-c hub, mechanical "
+                       "keyboard, monitor stand, desk lamp, webcam.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"type": "string"},
+                          "description": "Catalog item names"},
+                "address": {"type": "string",
+                            "description": "Shipping address"}},
+            "required": ["items", "address"],
+        },
+    },
 ]
 
 # tool name -> (agent action, text template)
@@ -100,25 +115,50 @@ _TOOL_ACTIONS = {
     "reorder": "reorder",
     "list_orders": "list",
     "estimate_delivery": "estimate",
+    "place_order": "place",
 }
 
 _agent = OrderAgent()
+_loader = None  # set via set_skill_loader() — skills hot-reload from YAML
+
+
+def set_skill_loader(loader) -> None:
+    global _loader
+    _loader = loader
+
+
+def _tools() -> list[dict]:
+    if _loader is not None:
+        return _loader.mcp_tools()
+    return TOOLS
+
+
+def _action_for(name: str) -> str | None:
+    if _loader is not None:
+        return _loader.action_for(name)
+    return _TOOL_ACTIONS.get(name)
 
 
 def _call_tool(name: str, args: dict) -> dict:
-    action = _TOOL_ACTIONS.get(name)
+    action = _action_for(name)
     if action is None:
         return {"isError": True,
                 "content": [{"type": "text",
                              "text": f"unknown tool: {name}"}]}
     order_id = args.get("order_id")
-    text = f"{action} #{order_id}" if order_id else action
-    if name == "modify_order" and args.get("change"):
-        text += f": {args['change']}"
-    result = _agent.handle(text, "mcp",
-                           {"order_action": action} if action in (
-                               "track", "cancel", "modify", "return",
-                               "reorder") else {})
+    if name == "place_order":
+        items = args.get("items", [])
+        address = args.get("address", "")
+        text = f"place order {' + '.join(items)} ship to {address}"
+        result = _agent.handle(text, "mcp", {"order_action": "place"})
+    else:
+        text = f"{action} #{order_id}" if order_id else action
+        if name == "modify_order" and args.get("change"):
+            text += f": {args['change']}"
+        result = _agent.handle(text, "mcp",
+                               {"order_action": action} if action in (
+                                   "track", "cancel", "modify", "return",
+                                   "reorder") else {})
     log.info("mcp tool=%s status=%s", name, result.status)
     return {
         "content": [{"type": "text", "text": result.message}],
@@ -148,7 +188,7 @@ def handle_rpc(payload: dict) -> dict | None:
     if method.startswith("notifications/"):
         return None
     if method == "tools/list":
-        return ok({"tools": TOOLS})
+        return ok({"tools": _tools()})
     if method == "tools/call":
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
