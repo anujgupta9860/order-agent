@@ -55,6 +55,11 @@ class OrderAgent:
         action = action or self._infer_action(text)
         order_id = (extract_order_id(text)
                     or analyzer.get("order_id"))
+        t = (text or "").lower()
+        if not order_id and any(k in t for k in self.NO_ID_PHRASES):
+            # "I don't have the order number" — recover by listing
+            # orders instead of dead-ending on a missing ID.
+            return self._need_id(action, text)
         log.info("order agent: action=%s order_id=%s intent=%s",
                  action, order_id, intent)
         handler = {
@@ -70,16 +75,35 @@ class OrderAgent:
         return handler(text, order_id, analyzer)
 
     # ---------------------------------------------------------------- actions
-    def _need_id(self, action: str) -> AgentResult:
+    # phrases that mean "I can't give you the ID" -> recover by listing
+    NO_ID_PHRASES = ("don't have", "dont have", "do not have",
+                     "don't know", "dont know", "do not know",
+                     "forgot", "lost it", "can't find", "cant find",
+                     "no idea")
+
+    def _need_id(self, action: str, text: str = "") -> AgentResult:
+        t = (text or "").lower()
+        if any(k in t for k in self.NO_ID_PHRASES):
+            orders = orders_db.list_all()
+            lines = [f"#{o['order_id']} — {o['status']}, "
+                     f"${o['total']:.2f} ({', '.join(o['items'])})"
+                     for o in orders]
+            return AgentResult(
+                status="needs_input", action="list",
+                message="No problem — here are your orders:\n" +
+                        "\n".join(lines) +
+                        "\nWhich one did you mean?",
+                data={"orders": orders})
         return AgentResult(
             status="needs_input", action=action,
             message="I need your order ID to do that — it looks like "
-                    "#48291 (5+ digits).")
+                    "#48291 (5+ digits). Don't have it? Just say so and "
+                    "I'll list all your orders.")
 
     def _track(self, text: str, order_id: str | None,
                analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("track")
+            return self._need_id("track", text)
         order = orders_db.get(order_id)
         if not order:
             return AgentResult(status="failed", action="track",
@@ -94,7 +118,7 @@ class OrderAgent:
     def _cancel(self, text: str, order_id: str | None,
                 analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("cancel")
+            return self._need_id("cancel", text)
         order = orders_db.cancel(order_id)
         if not order:
             current = orders_db.get(order_id)
@@ -110,7 +134,7 @@ class OrderAgent:
     def _modify(self, text: str, order_id: str | None,
                 analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("modify")
+            return self._need_id("modify", text)
         order = orders_db.get(order_id)
         if not order:
             return AgentResult(status="failed", action="modify",
@@ -130,7 +154,7 @@ class OrderAgent:
     def _return(self, text: str, order_id: str | None,
                 analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("return")
+            return self._need_id("return", text)
         ret = orders_db.create_return(order_id)
         if not ret:
             return AgentResult(status="failed", action="return",
@@ -145,7 +169,7 @@ class OrderAgent:
     def _reorder(self, text: str, order_id: str | None,
                  analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("reorder")
+            return self._need_id("reorder", text)
         new = orders_db.reorder(order_id)
         if not new:
             return AgentResult(status="failed", action="reorder",
@@ -178,7 +202,7 @@ class OrderAgent:
     def _estimate(self, text: str, order_id: str | None,
                   analyzer: dict) -> AgentResult:
         if not order_id:
-            return self._need_id("estimate")
+            return self._need_id("estimate", text)
         order = orders_db.get(order_id)
         if not order:
             return AgentResult(status="failed", action="estimate",

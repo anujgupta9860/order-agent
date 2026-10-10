@@ -214,3 +214,16 @@ def test_skill_loader_rejects_empty():
         p.write_text(yaml.safe_dump({"skills": []}))
         with pytest.raises(SkillError):
             SkillLoader(p)
+
+
+def test_no_id_recovers_with_order_list():
+    r = OrderAgent().handle("i dont have the order number",
+                            "order_status", {})
+    assert r.status == "needs_input" and r.action == "list"
+    assert "#48291" in r.message and "Which one" in r.message
+
+
+def test_need_id_offers_list_hint():
+    r = OrderAgent().handle("track my order", "order_status", {})
+    assert r.status == "needs_input"
+    assert "list all your orders" in r.message
