@@ -229,8 +229,11 @@ class OrderAgent:
 
     def _place(self, text: str, order_id: str | None,
                analyzer: dict) -> AgentResult:
-        items = self._extract_items(text)
-        address = self._extract_address(text)
+        # Check session message history for items/address from earlier turns.
+        history = " ".join(analyzer.get("_session_messages") or [])
+        items = self._extract_items(text) or self._extract_items(history)
+        address = (self._extract_address(text)
+                   or self._extract_address(history))
         if not items:
             return AgentResult(
                 status="needs_input", action="place",

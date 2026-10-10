@@ -89,6 +89,8 @@ def message(req: MessageRequest):
                     **analyzer}
         if session.get("action") and not analyzer.get("order_action"):
             analyzer["order_action"] = session["action"]
+    if session.get("messages"):
+        analyzer["_session_messages"] = session["messages"]
     result = agent.handle(req.text.strip(), req.intent.strip(), analyzer)
     out = timed(result, started, req.text.strip())
     log.info("task=%s action=%s status=%s", out["task_id"],
