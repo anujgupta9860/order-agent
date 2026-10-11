@@ -41,18 +41,34 @@ class AgentResult:
 class OrderAgent:
     """Handles the orders domain's six actions."""
 
+    # Labels the Tier-2 analyzer head was trained on. Text inference
+    # wins outright for anything outside this set.
+    ANALYZER_LABELS = frozenset(
+        {"track", "cancel", "modify", "return", "reorder", "order_info"})
+
     def handle(self, text: str, intent: str,
                analyzer: dict | None) -> AgentResult:
         analyzer = analyzer or {}
         action = analyzer.get("order_action")
         conf = analyzer.get("choice_confidence")
-        if action and conf is not None and conf < 0.8:
+        inferred = self._infer_action(text)
+        if inferred not in self.ANALYZER_LABELS:
+            # The analyzer's head only knows 6 labels (track/cancel/
+            # modify/return/reorder/order_info). If text inference finds
+            # one of the 4 it can't produce (list/estimate/place/greet),
+            # trust text inference — the analyzer couldn't have
+            # considered it, whatever its confidence.
+            log.info("order agent: text inference found '%s', outside "
+                     "analyzer vocabulary; overriding analyzer '%s'",
+                     inferred, action)
+            action = inferred
+        elif action and conf is not None and conf < 0.8:
             # Analyzer is unsure — possibly a request outside its trained
             # labels (e.g. list/estimate). Trust the message text instead.
             log.info("order agent: analyzer unsure (%s @ %.2f); "
                      "falling back to text inference", action, conf)
-            action = self._infer_action(text)
-        action = action or self._infer_action(text)
+            action = inferred
+        action = action or inferred
         order_id = (extract_order_id(text)
                     or analyzer.get("order_id"))
         t = (text or "").lower()
